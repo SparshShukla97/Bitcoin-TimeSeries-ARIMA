@@ -1,0 +1,435 @@
+---
+title: "Bitcoin Time Series Forecasting"
+author: "Sparsh Shukla"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# 📊 Introduction
+
+This report analyzes monthly Bitcoin index data from August 2011 to January 2025 using ARIMA models.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 📥 Analysis Code
+
+```{r}
+## Assignment_2 : Bitcoin Time Series Analysis 
+## Date : 29/04/2025
+
+#----------------------------------------------------------------------------------------------------------------------------------
+## Loading and Preparing Data
+#----------------------------------------------------------------------------------------------------------------------------------
+
+# Importing all the Required Libraries
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(forecast)
+library(TSA)
+library(tseries)
+library(zoo) 
+
+# Loading the Dataset
+bitcoin_analysis_data <- read.csv('/Users/sparshshukla/Desktop/RMIT semester/SEM4 @ RMIT/Time series analysis/Assignment_2/assignment2Data2025.csv', header = TRUE)
+
+# displaying the Data 
+print(bitcoin_analysis_data)
+
+# Checking the missing Values in the Dataset
+sum(is.na(bitcoin_analysis_data))
+
+# Sumarry Statistics
+summary(bitcoin_analysis_data)
+
+
+# Create a time series object
+# Assuming monthly data, starting from August 2011
+bitcoin_ts <- ts(bitcoin_analysis_data$Bitcoin, 
+                 start = c(2011, 8), 
+                 frequency = 12)
+
+
+
+#----------------------------------------------------------------------------------------------------------------------------------
+## Descriptive Analysis - Time Series Plot
+#----------------------------------------------------------------------------------------------------------------------------------
+
+# Line Plot of Bitcoin Time Series with adjusted axis scales
+autoplot(bitcoin_ts) +
+  ggtitle("Bitcoin Price Time Series (Aug 2011 - Jan 2025)") +
+  xlab("Year") +
+  ylab("Bitcoin Price (USD)") +
+  scale_x_continuous(breaks = seq(2011, 2025, by = 2)) +
+  scale_y_continuous(labels = scales::dollar_format(scale = 1e-3, suffix = "K")) +  # Adjust based on your data
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.title = element_text(size = 14),
+    axis.text = element_text(size = 12)
+  )
+
+# Histogram and Density Plot of Bitcoin Prices
+
+# Convert time series to dataframe for plotting
+moving_avg_data <- data.frame(
+  Time = as.Date(as.yearmon(time(bitcoin_ts))),  # Ensures proper Date format
+  Bitcoin = as.numeric(bitcoin_ts)
+)
+
+# Histogram + Density Plot
+ggplot(moving_avg_data, aes(x = Bitcoin)) +
+  geom_histogram(aes(y = ..density..), 
+                 bins = 30, 
+                 fill = "skyblue", 
+                 color = "black", 
+                 alpha = 0.7) +
+  geom_density(color = "red", size = 1) +
+  labs(title = "Histogram and Density of Bitcoin Prices",
+       x = "Bitcoin Price (USD)",
+       y = "Density") +
+  theme_minimal() +
+  theme(text = element_text(size = 14),
+        plot.title = element_text(face = "bold"))
+
+# Time Series with LOESS Smoother
+ggplot(moving_avg_data, aes(x = Time, y = Bitcoin)) +
+  geom_line(color = "blue", size = 1) +
+  geom_smooth(method = "loess", color = "red", se = FALSE, size = 1) +
+  labs(title = "Bitcoin Time Series with Trend Smoother",
+       x = "Time (Year)",
+       y = "Bitcoin Price (USD)") +
+  theme_minimal() +
+  theme(text = element_text(size = 14),
+        plot.title = element_text(face = "bold"))
+
+
+## Q-Q Plot of Original Series
+
+# Extract residuals by fitting a simple model (just for visual normality check)
+model_original <- lm(bitcoin_ts ~ time(bitcoin_ts))
+residuals_original <- residuals(model_original)
+
+# Q-Q Plot
+qqnorm(residuals_original,
+       main = "Q-Q Plot of Original Series Residuals")
+qqline(residuals_original,
+       col = "red", lwd = 2)
+
+
+#----------------------------------------------------------------------------------------------------------------------------------
+## Assignment task-1 Stationarity Check - ACF, PACF, 
+#----------------------------------------------------------------------------------------------------------------------------------
+
+# Convert time series to data frame
+bitcoin_df <- fortify(ts(bitcoin_ts))
+
+# Plot with line and points
+ggplot(bitcoin_df, aes(x = Index, y = Data)) +
+  geom_line(color = "black") +
+  geom_point(shape = 1, size = 2, color = "black") +
+  labs(title = "Original Bitcoin Index Time Series",
+       x = "Year",
+       y = "Bitcoin Index (USD)") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
+
+
+#-------------------------------------------------------------------------
+
+# 2. ACF and PACF plots of original series
+acf(bitcoin_ts, main = "ACF of Original Series")
+pacf(bitcoin_ts, main = "PACF of Original Series")
+
+
+#---------------------------------------------------------------------------
+
+# 3. Augmented Dickey-Fuller Test To check Stationary.
+adf_test <- adf.test(bitcoin_ts)
+cat("ADF Test Result:\n")
+print(adf_test)
+
+
+#-----------------------------------------------------------------------
+
+# 4. KPSS Test
+kpss_test <- kpss.test(bitcoin_ts)
+cat("KPSS Test Result:\n")
+print(kpss_test)
+
+
+
+#----------------------------------------------------------------------------------------------------------------------------------
+## First Differencing to Achieve Stationarity and Re-evaluation with ADF, KPSS, ACF, and PACF
+#----------------------------------------------------------------------------------------------------------------------------------
+
+# First differencing to achieve stationarity
+diff_bitcoin_ts <- diff(bitcoin_ts)
+
+diff_bitcoin_ts
+# The diff() function in R computes lagged differences between consecutive observations in a time series. 
+# It’s typically used to remove non-stationarity due to trends.
+
+# Plot the differenced series
+autoplot(diff_bitcoin_ts) +
+  labs(title = "First Differenced Bitcoin Series",
+       x = "Time", y = "Differenced Price (USD)") +
+  theme_minimal()
+
+# Augmented Dickey-Fuller Test
+adf.test(diff_bitcoin_ts)
+# 4. KPSS Test
+kpss.test(diff_bitcoin_ts)
+
+# ACF and PACF after differencing
+acf(diff_bitcoin_ts, main = "ACF of Differenced Series")
+pacf(diff_bitcoin_ts, main = "PACF of Differenced Series")
+
+
+#-----------------------------------------------------------------------------------------------------------------------
+# LOG TRANSFORMATIONS 
+#-----------------------------------------------------------------------------------------------------------------------
+
+# Log Transformation of Non-Stationary Series
+log_bitcoin_ts <- log(bitcoin_ts)
+
+# Plot the log-transformed series
+autoplot(log_bitcoin_ts) +
+  labs(title = "Log-Transformed Bitcoin Series (Non-Stationary)",
+       x = "Time", y = "Log(Bitcoin Price)") +
+  theme_minimal()
+
+# ACF and PACF of the Log-Transformed (Non-Differenced) Series
+acf(log_bitcoin_ts, main = "ACF of Log-Transformed Bitcoin Series (Before Differencing)")
+pacf(log_bitcoin_ts, main = "PACF of Log-Transformed Bitcoin Series (Before Differencing)")
+
+#-----------------------------------------------------------------------------------------------------------------------
+
+# First Differencing of Log-Transformed Bitcoin Series
+log_diff_bitcoin_ts <- diff(log_bitcoin_ts)
+
+# Plot the differenced log-transformed series
+autoplot(log_diff_bitcoin_ts) +
+  labs(title = "Differenced Log-Transformed Bitcoin Series",
+       x = "Time",
+       y = "Differenced Log(Bitcoin Price)") +
+  theme_minimal()
+
+# Step 4: ACF and PACF of the Differenced Log-Transformed Series
+acf(log_diff_bitcoin_ts, main = "ACF of Differenced Log-Transformed Series")
+pacf(log_diff_bitcoin_ts, main = "PACF of Differenced Log-Transformed Series")
+
+#--------------------------------------------------------------------------------------------------------------------------
+## Box-Cox Transformation 
+#--------------------------------------------------------------------------------------------------------------------------
+# DOUBT about lambda
+# Box-Cox Transformation for Non-Stationary Data
+BC <- BoxCox.ar(bitcoin_ts, lambda = seq(0, 1, 0.01))
+BC$ci
+
+# Extract optimal lambda value
+lambda <- BC$lambda[which.max(BC$loglike)] 
+print(lambda)
+
+# Apply Box-Cox transformation manually
+bitcoin_bc <- (bitcoin_ts^lambda - 1) / lambda
+
+# Plot the transformed series
+plot(bitcoin_bc, type = "l", ylab = "BC-Transformed Price",
+     main = "Figure 9: Box-Cox Transformed Bitcoin Index",
+     col = "blue", lwd = 2)
+#-------------------------------------------------------------------------------------------------------------
+
+# First differencing of the Box-Cox transformed series
+
+bitcoin_bc_diff <- diff(bitcoin_bc, differences = 1)
+
+# Plot the differenced Box-Cox transformed series
+plot(bitcoin_bc_diff,
+     ylab = "Differenced BC-Transformed Bitcoin Price",
+     xlab = "Time",
+     type = "o",
+     main = "First Differenced Box-Cox Transformed Bitcoin Series",
+     col = "darkgreen", lwd = 2)
+
+# ACF and PACF of First Differenced Box-Cox Transformed Series
+acf(bitcoin_bc_diff,lag.max = 25,main = "ACF of Differenced Box-Cox Transformed Bitcoin Series",col = "red")
+pacf(bitcoin_bc_diff,lag.max = 25,main = "PACF of Differenced Box-Cox Transformed Bitcoin Series",col = "red")
+
+
+#----------------------------------------------------------------------------------------------------------------------------------
+# Identifying Optimal AR and MA Orders Using Extended Autocorrelation Function (EACF)
+#----------------------------------------------------------------------------------------------------------------------------------
+
+# Load TSA package (if not already loaded)
+library(TSA)
+
+# Apply EACF on the differenced series
+
+eacf_result <- eacf(log_diff_bitcoin_ts)
+
+# Print the EACF matrix
+print("EACF Matrix for Differenced Bitcoin Series:")
+print(eacf_result)
+
+# ------------------------------------------------------------------------------------------------------------------------------------
+# BIC-Based ARMA Model Selection Using armasubsets()
+# ------------------------------------------------------------------------------------------------------------------------------------
+
+# Load required package
+library(TSA)
+
+# Step 1: Run ARMA subset selection
+bic_selection <- armasubsets(y = log_diff_bitcoin_ts,
+                             nar = 6,
+                             nma = 6,
+                             ar.method = "ols")
+
+# Step 2: Plot with embedded title
+plot(bic_selection,
+     xlab = "AR Order (p)", 
+     ylab = "MA Order (q)")
+
+
+
+#------------------------------------------------------------------------------------------------------------------------------
+# Fitting ARIMA Models using Log_transformed_model
+#------------------------------------------------------------------------------------------------------------------------------
+
+# Step 1: Apply log transformation
+log_bitcoin_ts <- log(bitcoin_ts)
+
+# Step 2: Fit ARIMA models on log-transformed series
+log_model_111 <- Arima(log_bitcoin_ts, order = c(1, 1, 1))
+log_model_112 <- Arima(log_bitcoin_ts, order = c(1, 1, 2))
+log_model_114 <- Arima(log_bitcoin_ts, order = c(1, 1, 4))
+log_model_212 <- Arima(log_bitcoin_ts, order = c(2, 1, 2))
+log_model_213 <- Arima(log_bitcoin_ts, order = c(2, 1, 3))
+
+# Step 3: Calculate MSE for each model
+mse_111 <- mean(residuals(log_model_111)^2, na.rm = TRUE)
+mse_112 <- mean(residuals(log_model_112)^2, na.rm = TRUE)
+mse_114 <- mean(residuals(log_model_114)^2, na.rm = TRUE)
+mse_212 <- mean(residuals(log_model_212)^2, na.rm = TRUE)
+mse_213 <- mean(residuals(log_model_213)^2, na.rm = TRUE)
+
+# Step 4: Compare AIC, BIC, and MSE values
+aic_bic_log_models <- data.frame(
+  Model = c("ARIMA(1,1,1)", "ARIMA(1,1,2)", "ARIMA(1,1,4)", 
+            "ARIMA(2,1,2)", "ARIMA(2,1,3)"),
+  AIC = c(AIC(log_model_111), AIC(log_model_112), AIC(log_model_114), 
+          AIC(log_model_212), AIC(log_model_213)),
+  BIC = c(BIC(log_model_111), BIC(log_model_112), BIC(log_model_114), 
+          BIC(log_model_212), BIC(log_model_213)),
+  MSE = c(mse_111, mse_112, mse_114, mse_212, mse_213)
+)
+
+# Step 5: Display the comparison table
+print(aic_bic_log_models)
+
+
+
+
+#------------------------------------------------------------------------------------------------------------------------------
+# Diagnostic Checks for ARIMA(2,1,2) on Log-Transformed Series
+#------------------------------------------------------------------------------------------------------------------------------
+
+# Step 1: Plot residuals
+tsdisplay(residuals(log_model_212), 
+          main = "Diagnostic Plots for ARIMA(2,1,2)",
+          lag.max = 36)
+
+# Step 2: Ljung-Box Test to check autocorrelation in residuals
+Box.test(residuals(log_model_212), lag = 20, type = "Ljung-Box")
+
+# Step 3: Q-Q Plot to assess normality of residuals
+par(mar = c(5, 4, 5, 2))  # Adjust top margin for better spacing
+qqnorm(residuals(log_model_212), 
+       main = "Q-Q Plot of Residuals (ARIMA(2,1,2))",
+       pch = 19, col = "blue")
+qqline(residuals(log_model_212), col = "red", lwd = 2)
+
+# Step 4: Histogram of residuals
+hist(residuals(log_model_212), 
+     breaks = 30, 
+     main = "Histogram of Residuals",
+     col = "skyblue", 
+     xlab = "Residuals")
+
+# Step 5: Shapiro-Wilk Test for normality (optional)
+shapiro.test(residuals(log_model_212))
+
+# Actual vs Fitted Plot (ARIMA Model)
+# Step 1: Extract fitted values from ARIMA(2,1,2) on log-transformed data
+fitted_log <- fitted(log_model_212)
+
+# Step 2: Convert fitted and actual values back from log scale
+fitted_values <- exp(fitted_log)
+actual_values <- exp(log_bitcoin_ts)
+
+# Step 3: Align actual values with fitted values
+actual_values_aligned <- window(actual_values, start = time(fitted_log)[1])
+
+# Step 4: Convert both to billions
+actual_values_billion <- actual_values_aligned / 1e9
+fitted_values_billion <- fitted_values / 1e9
+
+# Step 5: Plot Actual vs Fitted in Billions with Date Index
+plot(actual_values_billion,
+     col = "black", lwd = 2,
+     ylab = "Bitcoin Price (Billion USD)",
+     xlab = "Year",
+     main = "Actual vs Fitted: ARIMA(2,1,2) on Log-Transformed Series",
+     yaxt = "n")
+
+# Custom Y-axis in Billions
+axis(2, at = pretty(actual_values_billion),
+     labels = paste0(pretty(actual_values_billion), "B"))
+
+# Add fitted line
+lines(fitted_values_billion, col = "red", lwd = 2, lty = 2)
+
+# Add legend
+legend("topleft", legend = c("Actual", "Fitted"),
+       col = c("black", "red"), lwd = 2, lty = c(1, 2))
+
+#------------------------------------------------------------------------------------------------------------------------------
+# Forecasting Bitcoin Prices using ARIMA(2,1,2) Model on Log-Transformed Data
+#------------------------------------------------------------------------------------------------------------------------------
+
+# Load required libraries
+library(forecast)
+library(ggplot2)
+
+
+y_max_limit <- max(forecast_df$Forecast, na.rm = TRUE) * 1.2 
+s
+# Plot with fixed y-axis scale
+ggplot() +
+  geom_line(data = original_df_trimmed, aes(x = Time, y = Price, color = "Actual Price"), size = 1.2) +
+  geom_line(data = forecast_df_trimmed, aes(x = Time, y = Forecast, color = "Forecast"), size = 1.2) +
+  geom_ribbon(data = forecast_df_trimmed,
+              aes(x = Time,
+                  ymin = pmax(Lower, 0),  # Prevent negative CI values
+                  ymax = pmin(Upper, y_max_limit),  # Cap upper CI
+                  fill = "95% Confidence Interval"),
+              alpha = 0.3) +
+  scale_color_manual(values = c("Actual Price" = "black", "Forecast" = "blue")) +
+  scale_fill_manual(values = c("95% Confidence Interval" = "#6BAED6")) +
+  labs(title = "Bitcoin Price Forecast (Next 12 Months)",
+       subtitle = "ARIMA(2,1,2) Model | Adjusted Scale for Clearer Trend",
+       x = "Time", y = "Bitcoin Price (USD '000s)",
+       color = "Line", fill = "Confidence") +
+  coord_cartesian(ylim = c(0, y_max_limit)) +  # This limits the visible y-axis range
+  theme_minimal() +
+  theme(text = element_text(size = 13),
+        plot.title = element_text(face = "bold", size = 15),
+        legend.position = "top")
+
+```
+
+# ✅ Conclusion
+
+The ARIMA model was fitted and used to forecast future Bitcoin prices with confidence intervals, following the methodology taught in Modules 5 and 6 of the Time Series Analysis course.

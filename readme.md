@@ -5,6 +5,8 @@
 
 # 📈 Bitcoin Time Series Forecasting Using ARIMA Models
 
+![bitcoin_logo](https://github.com/SparshShukla97/Bitcoin-TimeSeries-ARIMA/blob/main/Bitcoin.width-648.png)
+
 This project provides a detailed time series analysis and forecasting of the **monthly Bitcoin index (USD)** from **August 2011 to January 2025**. The analysis was conducted as part of the **MATH1318 - Time Series Analysis** course at **RMIT University**.
 
 The core objective is to build an effective and interpretable **ARIMA(p,d,q)** model to forecast future Bitcoin prices and explore its trends, variance, and statistical properties.
